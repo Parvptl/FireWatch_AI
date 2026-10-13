@@ -21,6 +21,7 @@ Sanitisation policy (per box, in normalised coordinates):
    zero or negative extent are dropped.
 3. If clipping changed the box, write the clipped box ("clipped").
 4. Unchanged boxes are copied verbatim (original text, no float reformatting).
+   Label files are always written with LF line endings.
 
 Per image:
 

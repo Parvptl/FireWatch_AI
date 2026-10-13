@@ -177,7 +177,7 @@ See [training.md](training.md) for the experimental procedure and
 ```bash
 cd ~/projects/FireWatch-AI
 export FIREWATCH_DATA_ROOT=$HOME/datasets/dfire        # raw D-Fire (to build the view)
-export FIREWATCH_VIEW_DIR=$HOME/datasets/dfire_view    # sanitised view (built once)
+export FIREWATCH_VIEW_DIR=$HOME/datasets/dfire_view_v2 # sanitised view (built once)
 export FIREWATCH_RUNS_ROOT=$HOME/firewatch_runs
 bash slurm/submit.sh train configs/smoke_test.yaml
 ```
@@ -210,5 +210,5 @@ GPU. Run them in a short allocation rather than on the login node:
 ```bash
 srun -p gpu03 -n 1 --cpus-per-task=2 --mem=4G --time=00:20:00 \
     ~/envs/firewatch/bin/python scripts/prepare_data.py --config configs/baseline.yaml \
-    --data-root ~/datasets/dfire --output-dir ~/datasets/dfire_view
+    --data-root ~/datasets/dfire --output-dir ~/datasets/dfire_view_v2
 ```

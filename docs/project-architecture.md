@@ -10,7 +10,7 @@ to video streams.
 
 ```
 configs/baseline.yaml            dataset, prepare and train settings
-configs/smoke_test.yaml          extends baseline: 2 epochs, 10 % of train
+configs/smoke_test.yaml          extends baseline: 2 epochs, full train split
 constraints/cluster-torch.txt    pins torch/torchvision during pip installs
 src/firewatch/
   data/yolo.py                   YOLO label parsing, coordinate conversion

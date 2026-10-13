@@ -116,7 +116,7 @@ would write `labels.cache` into the dataset and drop images with out-of-bounds
 boxes. For training, build the sanitised view instead:
 
 ```bash
-python scripts/prepare_data.py --config configs/baseline.yaml --data-root ~/datasets/dfire     --output-dir ~/datasets/dfire_view
+python scripts/prepare_data.py --config configs/baseline.yaml --data-root ~/datasets/dfire     --output-dir ~/datasets/dfire_view_v2
 ```
 
 The view is built only when validation reports no errors. The full policy is

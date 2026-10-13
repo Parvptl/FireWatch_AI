@@ -12,7 +12,7 @@ is only built when validation reports no errors.
 
 Examples:
     python scripts/prepare_data.py --config configs/baseline.yaml --data-root ~/datasets/dfire \
-        --output-dir ~/datasets/dfire_view
+        --output-dir ~/datasets/dfire_view_v2
     python scripts/prepare_data.py --config configs/baseline.yaml --data-root ~/datasets/dfire
     python scripts/prepare_data.py --config configs/baseline.yaml \
         --report outputs/dfire_report.json --write-data-yaml outputs/dfire_data.yaml

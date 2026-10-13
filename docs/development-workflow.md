@@ -75,7 +75,7 @@ Cheap checks only, with no training and no heavy data processing:
 # only when dependencies change; the constraints file protects torch
 ~/envs/firewatch/bin/python -m pip install -e ".[train,dev]" -c constraints/cluster-torch.txt
 ~/envs/firewatch/bin/python -m pytest -q
-~/envs/firewatch/bin/python scripts/train.py --config configs/smoke_test.yaml     --data ~/datasets/dfire_view/data.yaml --dry-run    # checks only, no training
+~/envs/firewatch/bin/python scripts/train.py --config configs/smoke_test.yaml     --data ~/datasets/dfire_view_v2/data.yaml --dry-run    # checks only, no training
 ```
 
 ## 7. Submit jobs
@@ -85,7 +85,7 @@ never directly on the login node. The login node is shared and has no allocated 
 
 ```bash
 export FIREWATCH_DATA_ROOT=$HOME/datasets/dfire
-export FIREWATCH_VIEW_DIR=$HOME/datasets/dfire_view
+export FIREWATCH_VIEW_DIR=$HOME/datasets/dfire_view_v2
 bash slurm/submit.sh train configs/smoke_test.yaml   # first
 bash slurm/submit.sh train configs/baseline.yaml
 ```
@@ -109,7 +109,7 @@ scancel <jobid>            # if needed
 | --- | --- |
 | Datasets | `~/datasets/` |
 | Run outputs and checkpoints | `~/firewatch_runs/<job-name>-<jobid>/` |
-| Dataset view | `~/datasets/dfire_view/` |
+| Dataset view | `~/datasets/dfire_view_v2/` |
 | Pretrained weights | `~/firewatch_weights/` |
 | SLURM stdout/stderr | `~/firewatch_runs/slurm_logs/` (via `slurm/submit.sh`) |
 
