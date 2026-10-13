@@ -1,0 +1,102 @@
+# ---------------------------------------------------------------------------
+# FireWatch-AI .gitignore
+# Source code, configs, docs and small test fixtures are tracked.
+# Datasets, weights, run outputs and secrets are NOT.
+# ---------------------------------------------------------------------------
+
+# --- Python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+.eggs/
+build/
+dist/
+wheels/
+pip-wheel-metadata/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ipynb_checkpoints/
+
+# --- Virtual environments ---------------------------------------------------
+/.venv/
+/venv/
+/env/
+/envs/
+.conda/
+
+# --- Secrets / local environment -------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.*
+kaggle.json
+
+# --- Datasets (stored outside Git; see docs/dataset-guide.md) ---------------
+# Leading "/" anchors to the repo root so src/firewatch/data/ is NOT ignored.
+/data/
+/datasets/
+# Upstream D-Fire metadata clone (separate Git repo, cloned locally)
+/DFireDataset/
+# Downloaded archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+# Video files (CCTV footage)
+*.mp4
+*.avi
+*.mkv
+*.mov
+# Dataset caches (e.g. Ultralytics label caches)
+*.cache
+*.npy
+*.npz
+
+# --- Model weights and checkpoints -------------------------------------------
+/checkpoints/
+/weights/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.engine
+*.safetensors
+*.h5
+*.tflite
+
+# --- Experiment outputs and logs -------------------------------------------
+/outputs/
+/runs/
+/wandb/
+/mlruns/
+/lightning_logs/
+/tensorboard/
+/slurm_logs/
+slurm-*.out
+*.log
+
+# --- Offline pip wheelhouse (built on the cluster login node) ---------------
+/wheelhouse/
+
+# --- IDE / OS ---------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Claude Code local settings ----------------------------------------------
+.claude/settings.local.json

@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "firewatch"
+version = "0.1.0"
+description = "Fire and smoke detection for CCTV footage and images (D-Fire dataset)."
+readme = "README.md"
+requires-python = ">=3.10"
+# Core runtime dependencies used by the current code (dataset tooling).
+# PyTorch / torchvision are intentionally NOT listed: the cluster environment
+# (~/envs/firewatch) already has torch 2.5.1+cu121 / torchvision 0.20.1+cu121,
+# and letting pip resolve them would pull a different CUDA build from PyPI.
+# See docs/cluster-setup.md.
+dependencies = [
+    "PyYAML>=6.0,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<9",
+    "ruff>=0.17,<0.18",  # pinned minor: formatter output changes between minors
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "scripts", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]

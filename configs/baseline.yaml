@@ -1,0 +1,24 @@
+# FireWatch-AI baseline configuration.
+#
+# Currently consumed by: scripts/prepare_data.py
+# A training section will be added together with the training entry point
+# (not implemented yet; see README "Implementation status").
+
+dataset:
+  name: dfire
+  # Dataset root OUTSIDE the repository. Leave null and supply it with
+  # --data-root or the FIREWATCH_DATA_ROOT environment variable, e.g.
+  #   export FIREWATCH_DATA_ROOT=$HOME/datasets/dfire
+  root: null
+  # Split name -> directory under root. Each must contain images/ and labels/.
+  # Adjust to match the download you use (see docs/dataset-guide.md); the
+  # authors' YOLOv5 config uses train/ and valid/, for example.
+  splits:
+    train: train
+    val: val
+    test: test
+  image_dir: images
+  label_dir: labels
+  image_extensions: [.jpg, .jpeg, .png, .bmp]
+  # Class order MUST match the label ids: D-Fire uses 0 = smoke, 1 = fire.
+  class_names: [smoke, fire]
