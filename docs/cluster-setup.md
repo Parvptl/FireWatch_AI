@@ -73,8 +73,13 @@ first real check.
 nodes often lack. Test it on a compute node:
 
 ```bash
-srun -p gpu03 --gres=gpu:1 --time=00:05:00 ~/envs/firewatch/bin/python -c "import cv2; print(cv2.__version__)"
+srun -p gpu03 -n 1 --gres=gpu:1 --time=00:05:00 ~/envs/firewatch/bin/python -c "import cv2; print(cv2.__version__)"
 ```
+
+Always pass `-n 1` (`--ntasks=1`) to a single-process `srun`. `gpu03` allocates
+whole nodes (`OverSubscribe=EXCLUSIVE`), and without an explicit task count `srun`
+launched one copy of the command per allocated CPU (64 on `node003`, all sharing
+one GPU). The `sbatch` scripts set `--ntasks=1` and do not call `srun`.
 
 If that fails with `libGL.so.1: cannot open shared object file`, swap in the
 headless build of the **same version** (it provides the same `cv2` module):
@@ -203,7 +208,7 @@ Building the view (about 21.5k label files plus links) and data validation need 
 GPU. Run them in a short allocation rather than on the login node:
 
 ```bash
-srun -p gpu03 --cpus-per-task=2 --mem=4G --time=00:20:00 \
+srun -p gpu03 -n 1 --cpus-per-task=2 --mem=4G --time=00:20:00 \
     ~/envs/firewatch/bin/python scripts/prepare_data.py --config configs/baseline.yaml \
     --data-root ~/datasets/dfire --output-dir ~/datasets/dfire_view
 ```

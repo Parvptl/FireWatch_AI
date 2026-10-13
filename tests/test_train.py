@@ -445,6 +445,8 @@ def fake_yolo(monkeypatch):
     FakeYOLO.calls = []
     FakeYOLO.fail_with = None
     monkeypatch.setattr(runner, "load_yolo_class", lambda: FakeYOLO)
+    # The real one imports ultralytics.utils, which works once the package is installed.
+    monkeypatch.setattr(runner, "amp_check_status", lambda: {"weights": None, "present": False})
     return FakeYOLO
 
 
