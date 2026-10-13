@@ -1,0 +1,10 @@
+# Short end-to-end check of the training pipeline on the cluster before the
+# full baseline: 2 epochs on 10% of the train split, full val split.
+# It verifies the environment, data, GPU memory at this batch size, checkpoint
+# writing and evaluation. Its metrics are NOT a result.
+extends: baseline.yaml
+
+train:
+  epochs: 2
+  fraction: 0.1
+  patience: 0         # disable early stopping for the 2-epoch run

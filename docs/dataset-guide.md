@@ -57,10 +57,14 @@ must never be committed. `.gitignore` excludes `kaggle.json`.
   14,692 boxes and class 0 has 11,865, which matches upstream's fire and smoke
   totals exactly. A Kaggle re-upload could in principle re-map ids, so run the
   validator on any other copy.
-- **Known label quirks** (found by `scripts/prepare_data.py`, left unmodified): 19
-  zero-area boxes (width or height is 0) across all splits, and 7 boxes in `test`
-  whose width or height slightly exceeds 1.0 (up to 1.056). The trainer should
-  drop degenerate boxes and clip coordinates to [0, 1] when loading.
+- **Known label quirks** (source files left unmodified). The validator's 26
+  warnings break down as follows. (This corrects an earlier note that said 19 + 7.)
+  - 18 zero-size boxes: 13 in train, 1 in val, 4 in test.
+  - 8 test boxes whose width or height exceeds 1.0, up to 1.056.
+
+  The view check also finds 379 boxes whose *corners* cross the image edge by
+  about 1 px or more (255 train, 62 val, 62 test). The training view clips those
+  and drops the zero-size boxes. See [training.md](training.md#1-dataset-view-why-training-never-reads-the-raw-dataset).
 - **Empty label file** = background image with no fire or smoke. Upstream reports a
   large share of such images, which is intended and not an error.
 - Upstream notes that some labelling tools produced negative coordinates. The
@@ -106,6 +110,17 @@ splits were found.
 
 The dataset root can also be supplied as `dataset.root` in the config or as the
 `FIREWATCH_DATA_ROOT` environment variable (CLI > config > env var).
+
+`--write-data-yaml` points at the **raw** dataset. Do not train on it: Ultralytics
+would write `labels.cache` into the dataset and drop images with out-of-bounds
+boxes. For training, build the sanitised view instead:
+
+```bash
+python scripts/prepare_data.py --config configs/baseline.yaml --data-root ~/datasets/dfire     --output-dir ~/datasets/dfire_view
+```
+
+The view is built only when validation reports no errors. The full policy is
+described in [training.md](training.md).
 
 ## Licence and citation
 

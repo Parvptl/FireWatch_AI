@@ -44,86 +44,166 @@ The GitHub repo is named `FireWatch_AI` (underscore). Cloning into
 
 ### Install the project into the existing environment
 
-Do **not** reinstall or upgrade torch or torchvision. `pyproject.toml` deliberately
-omits them, so pip will not touch the working CUDA build.
+Do **not** reinstall or upgrade torch or torchvision. `pyproject.toml` does not
+list them, and `constraints/cluster-torch.txt` pins the installed builds
+(`torch==2.5.1+cu121`, `torchvision==0.20.1+cu121`). If any package would need
+a different torch, pip **fails** instead of replacing the working CUDA build.
+Use the constraints file for every install into this environment.
 
-On the login node (has internet):
+On the login node (it has internet; the environment lives in your home directory,
+so compute nodes see the same packages):
 
 ```bash
-~/envs/firewatch/bin/python -m pip install -e ".[dev]"
-~/envs/firewatch/bin/python -c "import firewatch, torch; print(firewatch.__version__, torch.__version__, torch.version.cuda)"
+cd ~/projects/FireWatch-AI
+~/envs/firewatch/bin/python -m pip install -e ".[train,dev]" -c constraints/cluster-torch.txt
+~/envs/firewatch/bin/python -c "import torch, ultralytics, cv2; print(torch.__version__, torch.version.cuda, ultralytics.__version__, cv2.__version__)"
 ```
+
+Expected: `2.5.1+cu121 12.1 8.4.176 …`. If torch shows another version, stop:
+the constraints were not applied.
+
+The `train` extra installs `ultralytics==8.4.176` and its dependencies (OpenCV,
+matplotlib, polars, …). A resolution check on 2026-10-13 against Linux,
+Python 3.10 and the pinned torch picked `opencv-python 5.0.0.93`,
+`polars 2.0.0` and `numpy 2.2.6`. That was a resolution check only. These versions
+have **not** been installed or run with this pipeline yet; the smoke test is the
+first real check.
+
+**Headless OpenCV.** `opencv-python` needs `libGL.so.1`, which headless compute
+nodes often lack. Test it on a compute node:
+
+```bash
+srun -p gpu03 --gres=gpu:1 --time=00:05:00 ~/envs/firewatch/bin/python -c "import cv2; print(cv2.__version__)"
+```
+
+If that fails with `libGL.so.1: cannot open shared object file`, swap in the
+headless build of the **same version** (it provides the same `cv2` module):
+
+```bash
+V=$(~/envs/firewatch/bin/python -c "import importlib.metadata as m; print(m.version('opencv-python'))")
+~/envs/firewatch/bin/python -m pip uninstall -y opencv-python
+~/envs/firewatch/bin/python -m pip install "opencv-python-headless==$V" -c constraints/cluster-torch.txt
+```
+
+The project sets `YOLO_AUTOINSTALL=false`, so Ultralytics will not try to
+reinstall packages at runtime.
 
 If `~/envs/firewatch` is a conda environment rather than a venv, the
 `bin/python` path is the same, and the commands above work unchanged.
 
-### Offline installation (if the login node also lacks internet, or for a compute node)
+### Offline installation (wheelhouse)
 
-Build a wheelhouse where internet is available, then install without an index.
-Run all of this with the **cluster's** Python (3.10, Linux), so the wheels match
-the platform:
+Use this only if the target machine cannot reach PyPI. Let pip compute exactly
+what is missing from **your** environment (torch already satisfied), then
+download only those wheels.
+
+On a machine with internet and the same platform (the login node):
 
 ```bash
 cd ~/projects/FireWatch-AI
-~/envs/firewatch/bin/python -m pip download -d wheelhouse "PyYAML>=6.0,<7" "pytest>=8,<9" "ruff>=0.17,<0.18" "setuptools>=64" wheel
-# later, possibly on a node without internet:
-~/envs/firewatch/bin/python -m pip install --no-index --find-links wheelhouse "setuptools>=64" wheel
-~/envs/firewatch/bin/python -m pip install --no-index --find-links wheelhouse --no-build-isolation -e ".[dev]"
+PY=~/envs/firewatch/bin/python
+$PY -m pip install --dry-run --report /tmp/fw-report.json \
+    -e ".[train,dev]" -c constraints/cluster-torch.txt >/dev/null
+$PY -c "import json; r=json.load(open('/tmp/fw-report.json')); print('\n'.join(f\"{i['metadata']['name']}=={i['metadata']['version']}\" for i in r['install'] if i['metadata']['name'].lower() not in {'firewatch','torch','torchvision','triton'} and not i['metadata']['name'].lower().startswith('nvidia-')))" > /tmp/fw-reqs.txt
+$PY -m pip download --no-deps -d wheelhouse -r /tmp/fw-reqs.txt "setuptools>=64" wheel
 ```
 
-If you have to download on Windows instead, add
-`--platform manylinux2014_x86_64 --python-version 3.10 --only-binary=:all:`.
-`wheelhouse/` is gitignored.
+Copy `wheelhouse/` to the target (e.g. with `scp -r`), then install without an index:
 
-Record the exact working environment for reproducibility. Keep this file outside
-the repo, or commit it deliberately as `requirements-lock.txt`:
+```bash
+$PY -m pip install --no-index --find-links wheelhouse "setuptools>=64" wheel
+$PY -m pip install --no-index --find-links wheelhouse --no-build-isolation \
+    -e ".[train,dev]" -c constraints/cluster-torch.txt
+```
+
+If you must download on Windows instead, add
+`--platform manylinux2014_x86_64 --python-version 3.10 --only-binary=:all:` to
+`pip download`. `wheelhouse/` is gitignored.
+
+Record the exact working environment for reproducibility. The trainer also
+records key package versions in every `firewatch_run.json`.
 
 ```bash
 ~/envs/firewatch/bin/python -m pip freeze > ~/firewatch_runs/env-freeze-$(date +%F).txt
 ```
 
-### Pretrained weights on offline nodes
+### Model weights
 
-Any future trainer that downloads pretrained weights at runtime (torchvision
-`weights=...`, Ultralytics `*.pt`) will fail on an offline compute node.
-Download them on the login node first, e.g. into the torch hub cache
-`~/.cache/torch/hub/checkpoints/` or a dedicated `~/weights/` directory, and
-point the config at the local file.
+Training uses COCO-pretrained **YOLO26n** (5,544,453 bytes, AGPL-3.0). The
+source is the Ultralytics assets release `v8.4.0`, the same URL Ultralytics
+8.4.176 itself uses:
+
+```
+https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n.pt
+```
+
+Download it where there is internet access (login node or laptop) and put it at
+the path in `configs/baseline.yaml` (`train.weights: ~/firewatch_weights/yolo26n.pt`):
+
+```bash
+mkdir -p ~/firewatch_weights
+curl -fL -o ~/firewatch_weights/yolo26n.pt \
+    https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n.pt
+ls -l ~/firewatch_weights/yolo26n.pt        # expect 5544453 bytes
+sha256sum ~/firewatch_weights/yolo26n.pt    # recorded in firewatch_run.json for every run
+```
+
+If you downloaded it on the laptop, copy it with
+`scp yolo26n.pt <user>@<cluster>:~/firewatch_weights/`.
+
+The trainer **never downloads**. If the file is missing, it exits with code 2
+and prints this URL.
+
+**AMP self-check.** Before training, Ultralytics 8.4 runs an AMP sanity check
+that loads `yolo26n.pt` from *its own* settings `weights_dir`. It does not use
+the training weights path. Offline, it logs "checks skipped" and keeps AMP on,
+which is fine on an A30. `firewatch_run.json` records where it looked
+(`amp_check.weights`). To let the check run, copy the same file there once:
+
+```bash
+~/envs/firewatch/bin/python -c "from ultralytics.utils import WEIGHTS_DIR; print(WEIGHTS_DIR)"
+```
 
 ## Running jobs
 
-See [development-workflow.md](development-workflow.md) for the full loop. In
-short:
+See [training.md](training.md) for the experimental procedure and
+[development-workflow.md](development-workflow.md) for the Git loop.
 
 ```bash
 cd ~/projects/FireWatch-AI
-mkdir -p slurm_logs
-export FIREWATCH_DATA_ROOT=$HOME/datasets/dfire
-sbatch slurm/train_gpu03.sh configs/baseline.yaml
+export FIREWATCH_DATA_ROOT=$HOME/datasets/dfire        # raw D-Fire (to build the view)
+export FIREWATCH_VIEW_DIR=$HOME/datasets/dfire_view    # sanitised view (built once)
+export FIREWATCH_RUNS_ROOT=$HOME/firewatch_runs
+bash slurm/submit.sh train configs/smoke_test.yaml
 ```
 
-> `slurm/train_gpu03.sh` currently exits with an error because
-> `scripts/train.py` is not implemented yet. It is a ready template for when it is.
+`slurm/submit.sh` creates `$FIREWATCH_RUNS_ROOT/slurm_logs/` and submits with
+absolute `--output`/`--error` paths. SLURM opens log files *before* the job
+starts and does not create directories, so a direct `sbatch` needs
+`mkdir -p slurm_logs` in the repo root first.
 
-The job script:
+`slurm/train_gpu03.sh`:
 
 - requests 1 GPU on `gpu03`, with 8 CPUs, 32 GB RAM and 12 h. These values are
-  provisional (see above);
-- writes SLURM stdout and stderr to `slurm_logs/<job-name>-<jobid>.{out,err}`
-  (gitignored). SLURM opens these files before the script runs and does **not**
-  create the directory. If `slurm_logs/` is missing, the job fails immediately
-  with no log, so always run `mkdir -p slurm_logs` first;
-- needs no internet access on the compute node;
-- uses `~/envs/firewatch/bin/python` explicitly, with no `activate` needed
-  (override with `FIREWATCH_PYTHON`);
-- creates `~/firewatch_runs/<job-name>-<jobid>/` with `checkpoints/`, `logs/`, a
-  copy of the config, `run_info.txt` (git commit, dirty flag, node, versions,
-  seed), `nvidia-smi.txt` and any uncommitted diff.
+  **provisional** (see above);
+- uses `~/envs/firewatch/bin/python` explicitly (override with `FIREWATCH_PYTHON`);
+- builds the dataset view from `FIREWATCH_DATA_ROOT` if `$FIREWATCH_VIEW_DIR/data.yaml`
+  does not exist yet (`FIREWATCH_LINK_MODE` overrides `prepare.link_mode`), and
+  otherwise reuses it;
+- runs `scripts/train.py --config … --data $FIREWATCH_VIEW_DIR/data.yaml
+  --project $FIREWATCH_RUNS_ROOT --name <config-stem>-<jobid> --device 0`. Extra
+  arguments after the config are passed on and take precedence;
+- resumes instead when `FIREWATCH_RESUME=<run_dir>/weights/last.pt` is set;
+- needs no internet access (`YOLO_OFFLINE=1`).
 
-Lightweight data validation (no GPU needed) can run in a short interactive
-allocation rather than on the login node:
+`slurm/evaluate_gpu03.sh` passes all its arguments to `scripts/evaluate.py`:
+`bash slurm/submit.sh evaluate --weights … --data …`.
+
+Building the view (about 21.5k label files plus links) and data validation need no
+GPU. Run them in a short allocation rather than on the login node:
 
 ```bash
-srun -p gpu03 --cpus-per-task=2 --mem=4G --time=00:20:00 --pty \
-    ~/envs/firewatch/bin/python scripts/prepare_data.py --data-root ~/datasets/dfire
+srun -p gpu03 --cpus-per-task=2 --mem=4G --time=00:20:00 \
+    ~/envs/firewatch/bin/python scripts/prepare_data.py --config configs/baseline.yaml \
+    --data-root ~/datasets/dfire --output-dir ~/datasets/dfire_view
 ```

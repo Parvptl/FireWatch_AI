@@ -1,33 +1,31 @@
 #!/bin/bash
 # ---------------------------------------------------------------------------
-# FireWatch-AI single-GPU training job for the Bhavani cluster (partition gpu03,
-# NVIDIA A30 24 GB).
+# FireWatch-AI single-GPU YOLO training job (Bhavani cluster, partition gpu03,
+# 1x NVIDIA A30 24 GB). Runs scripts/train.py; see docs/training.md.
 #
-# STATUS: TEMPLATE. The training entry point scripts/train.py does NOT exist yet.
-# This script checks for it and exits with a clear error until it is added.
-# Everything else (environment, logging, run directories, provenance) is ready.
+# Submit from the repository root on the login node (preferred: the wrapper
+# creates the log directory outside the repo before SLURM opens the log files):
+#   slurm/submit.sh train configs/smoke_test.yaml
+#   slurm/submit.sh train configs/baseline.yaml [extra scripts/train.py args]
+# Direct submission also works if ./slurm_logs exists (gitignored):
+#   mkdir -p slurm_logs && sbatch slurm/train_gpu03.sh configs/baseline.yaml
 #
-# Submit from the repository root on the login node:
-#   cd ~/projects/FireWatch-AI
-#   mkdir -p slurm_logs
-#   sbatch slurm/train_gpu03.sh                       # uses configs/baseline.yaml
-#   sbatch slurm/train_gpu03.sh configs/other.yaml    # custom config
+# Environment (exported to the job by sbatch --export=ALL, the default):
+#   FIREWATCH_VIEW_DIR   prepared dataset view   (default: $HOME/datasets/dfire_view)
+#   FIREWATCH_DATA_ROOT  raw D-Fire dataset, only needed if the view does not
+#                        exist yet and must be built by this job
+#   FIREWATCH_RUNS_ROOT  parent of run dirs      (default: $HOME/firewatch_runs)
+#   FIREWATCH_PYTHON     interpreter             (default: $HOME/envs/firewatch/bin/python)
+#   FIREWATCH_RESUME     path to <run_dir>/weights/last.pt to continue a run
+#   FIREWATCH_LINK_MODE  symlink|hardlink|copy when building the view (default: config)
 #
-# Overridable environment variables (pass with: sbatch --export=ALL,VAR=value ...):
-#   FIREWATCH_PYTHON     Python interpreter      (default: $HOME/envs/firewatch/bin/python)
-#   FIREWATCH_DATA_ROOT  Dataset root, REQUIRED  (e.g. $HOME/datasets/dfire)
-#   FIREWATCH_RUNS_ROOT  Run output root         (default: $HOME/firewatch_runs)
-#   FIREWATCH_SEED       Random seed             (default: 42)
-#
-# PROVISIONAL resource values: --time=12:00:00, --mem=32G, --cpus-per-task=8 and
-# the --gres=gpu:1 syntax have NOT been verified against the gpu03 partition
-# policy. Before the first real job, check and adjust them:
-#   scontrol show partition gpu03      # MaxTime, DefMemPerCPU/MaxMemPerNode
-#   scontrol show node node003         # CPUTot, RealMemory, Gres (e.g. gpu:a30:1)
+# PROVISIONAL resources: --time, --mem, --cpus-per-task and the --gres syntax
+# are not verified against the gpu03 policy. Check before the first real job:
+#   scontrol show partition gpu03 ; scontrol show node node003
 # Some clusters require a typed request such as --gres=gpu:a30:1.
 #
-# No step in this script needs internet access. The trainer must not download
-# weights at runtime either (see docs/cluster-setup.md).
+# Nothing in this job needs internet access: weights must already exist at the
+# configured path, and the trainer forces Ultralytics offline mode.
 # ---------------------------------------------------------------------------
 #SBATCH --job-name=firewatch-train
 #SBATCH --partition=gpu03
@@ -37,67 +35,62 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --time=12:00:00
-# Paths are relative to the submission directory; slurm_logs/ must exist
-# before submission (SLURM does not create it) and is ignored by Git.
 #SBATCH --output=slurm_logs/%x-%j.out
 #SBATCH --error=slurm_logs/%x-%j.err
 
 set -euo pipefail
 
+fail() { echo "ERROR: $*" >&2; exit 2; }
+
 CONFIG="${1:-configs/baseline.yaml}"
+if [[ $# -gt 0 ]]; then shift; fi
 PYTHON="${FIREWATCH_PYTHON:-$HOME/envs/firewatch/bin/python}"
 RUNS_ROOT="${FIREWATCH_RUNS_ROOT:-$HOME/firewatch_runs}"
-SEED="${FIREWATCH_SEED:-42}"
-TRAIN_SCRIPT="scripts/train.py"
+VIEW_DIR="${FIREWATCH_VIEW_DIR:-$HOME/datasets/dfire_view}"
 
-fail() { echo "ERROR: $*" >&2; exit 1; }
-
-# --- Working directory: the repo root the job was submitted from -------------
+# --- Working directory: the repository root the job was submitted from --------
 cd "${SLURM_SUBMIT_DIR:-$PWD}"
-[[ -f pyproject.toml && -d src/firewatch ]] \
+[[ -f pyproject.toml && -f scripts/train.py ]] \
     || fail "submit from the FireWatch-AI repository root (current dir: $PWD)"
-
-# --- Preconditions -------------------------------------------------------------
 [[ -x "$PYTHON" ]] || fail "Python interpreter not found: $PYTHON (set FIREWATCH_PYTHON)"
 [[ -f "$CONFIG" ]] || fail "config file not found: $CONFIG"
-[[ -n "${FIREWATCH_DATA_ROOT:-}" ]] \
-    || fail "FIREWATCH_DATA_ROOT is not set; export it before sbatch (see docs/dataset-guide.md)"
-[[ -d "$FIREWATCH_DATA_ROOT" ]] || fail "dataset root does not exist: $FIREWATCH_DATA_ROOT"
-[[ -f "$TRAIN_SCRIPT" ]] || fail "$TRAIN_SCRIPT is not implemented yet. \
-Training is not available in this version of FireWatch-AI; see README 'Implementation status'."
 
-# --- Run directory outside the repository -----------------------------------
-RUN_NAME="${SLURM_JOB_NAME:-firewatch}-${SLURM_JOB_ID:-local}"
-RUN_DIR="$RUNS_ROOT/$RUN_NAME"
-mkdir -p "$RUN_DIR"/{checkpoints,logs}
-
-# --- Reproducibility / provenance -------------------------------------------
-export PYTHONHASHSEED="$SEED"
-export PYTHONUNBUFFERED=1
+# --- Reproducibility-related environment ---------------------------------------
+export PYTHONHASHSEED=0          # fixed hash seed for this process tree
+export PYTHONUNBUFFERED=1        # timely log output
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
-cp "$CONFIG" "$RUN_DIR/config.yaml"
-{
-    echo "job_id:      ${SLURM_JOB_ID:-n/a}"
-    echo "node:        $(hostname)"
-    echo "started:     $(date -Is)"
-    echo "git_commit:  $(git rev-parse HEAD 2>/dev/null || echo unknown)"
-    echo "git_dirty:   $([[ -n "$(git status --porcelain 2>/dev/null)" ]] && echo yes || echo no)"
-    echo "config:      $CONFIG"
-    echo "data_root:   $FIREWATCH_DATA_ROOT"
-    echo "seed:        $SEED"
-    echo "python:      $PYTHON"
-    "$PYTHON" -c 'import sys, torch, torchvision; print("versions:   ", sys.version.split()[0], torch.__version__, torchvision.__version__); print("cuda:       ", torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else "-")'
-} | tee "$RUN_DIR/run_info.txt"
-nvidia-smi > "$RUN_DIR/nvidia-smi.txt" 2>&1 || true
-git diff > "$RUN_DIR/uncommitted.diff" 2>/dev/null || true
+export YOLO_OFFLINE=1            # also set by the trainer; fail fast on downloads
 
-# --- Train ----------------------------------------------------------------------
-# NOTE: the CLI below is the intended contract for scripts/train.py; adjust it
-# when the trainer is implemented.
-"$PYTHON" "$TRAIN_SCRIPT" \
+echo "job ${SLURM_JOB_ID:-n/a} on $(hostname) at $(date -Is)"
+echo "config=$CONFIG python=$PYTHON runs_root=$RUNS_ROOT view=$VIEW_DIR"
+nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv || true
+
+# --- Resume an existing run ------------------------------------------------------
+if [[ -n "${FIREWATCH_RESUME:-}" ]]; then
+    [[ -f "$FIREWATCH_RESUME" ]] || fail "FIREWATCH_RESUME checkpoint not found: $FIREWATCH_RESUME"
+    echo "resuming from $FIREWATCH_RESUME"
+    exec "$PYTHON" scripts/train.py --config "$CONFIG" --resume "$FIREWATCH_RESUME" "$@"
+fi
+
+# --- Dataset view: reuse, or build once from the raw dataset -------------------
+if [[ ! -f "$VIEW_DIR/data.yaml" ]]; then
+    [[ -n "${FIREWATCH_DATA_ROOT:-}" ]] || fail "no dataset view at $VIEW_DIR and \
+FIREWATCH_DATA_ROOT is not set to build one (see docs/training.md)"
+    echo "building dataset view $VIEW_DIR from $FIREWATCH_DATA_ROOT"
+    "$PYTHON" scripts/prepare_data.py --config "$CONFIG" \
+        --data-root "$FIREWATCH_DATA_ROOT" --output-dir "$VIEW_DIR" \
+        --report "$VIEW_DIR.validation.json" \
+        ${FIREWATCH_LINK_MODE:+--link-mode "$FIREWATCH_LINK_MODE"}
+fi
+
+# --- Train ------------------------------------------------------------------------
+# Run name <config stem>-<job id>; a --name in the extra args takes precedence.
+RUN_NAME="$(basename "$CONFIG" .yaml)-${SLURM_JOB_ID:-local}"
+exec "$PYTHON" scripts/train.py \
     --config "$CONFIG" \
-    --data-root "$FIREWATCH_DATA_ROOT" \
-    --output-dir "$RUN_DIR" \
-    --seed "$SEED"
-
-echo "finished: $(date -Is)  outputs: $RUN_DIR"
+    --data "$VIEW_DIR/data.yaml" \
+    --project "$RUNS_ROOT" \
+    --name "$RUN_NAME" \
+    --device 0 \
+    --workers "${SLURM_CPUS_PER_TASK:-8}" \
+    "$@"

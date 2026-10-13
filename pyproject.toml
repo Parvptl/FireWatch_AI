@@ -18,6 +18,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Training/evaluation. Ultralytics is AGPL-3.0 (see docs/training.md#licensing).
+# Exact pin: the integration in src/firewatch/training was checked against this
+# release's source. Install with constraints/cluster-torch.txt so pip cannot
+# replace the cluster's torch 2.5.1+cu121 / torchvision 0.20.1+cu121.
+train = [
+    "ultralytics==8.4.176",
+]
 dev = [
     "pytest>=8,<9",
     "ruff>=0.17,<0.18",  # pinned minor: formatter output changes between minors

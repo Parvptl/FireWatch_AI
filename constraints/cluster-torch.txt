@@ -1,0 +1,6 @@
+# pip constraints for the Bhavani cluster environment (~/envs/firewatch).
+# Use with every install into that environment:
+#   pip install -e ".[train]" -c constraints/cluster-torch.txt
+# pip then fails instead of replacing the verified CUDA builds below.
+torch==2.5.1+cu121
+torchvision==0.20.1+cu121

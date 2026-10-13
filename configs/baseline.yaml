@@ -1,18 +1,16 @@
 # FireWatch-AI baseline configuration.
 #
-# Currently consumed by: scripts/prepare_data.py
-# A training section will be added together with the training entry point
-# (not implemented yet; see README "Implementation status").
+# Used by: scripts/prepare_data.py (dataset, prepare), scripts/train.py (train),
+#          scripts/evaluate.py (dataset.class_names).
+# Command-line options override the train: values. See docs/training.md.
 
 dataset:
   name: dfire
-  # Dataset root OUTSIDE the repository. Leave null and supply it with
+  # Raw dataset root OUTSIDE the repository. Leave null and supply it with
   # --data-root or the FIREWATCH_DATA_ROOT environment variable, e.g.
   #   export FIREWATCH_DATA_ROOT=$HOME/datasets/dfire
   root: null
   # Split name -> directory under root. Each must contain images/ and labels/.
-  # Adjust to match the download you use (see docs/dataset-guide.md); the
-  # authors' YOLOv5 config uses train/ and valid/, for example.
   splits:
     train: train
     val: val
@@ -22,3 +20,34 @@ dataset:
   image_extensions: [.jpg, .jpeg, .png, .bmp]
   # Class order MUST match the label ids: D-Fire uses 0 = smoke, 1 = fire.
   class_names: [smoke, fire]
+
+# Building the sanitised training view (scripts/prepare_data.py --output-dir).
+prepare:
+  link_mode: symlink   # symlink | hardlink | copy (copy duplicates ~3 GB)
+  min_box_size: 0.0    # drop boxes whose clipped width or height is <= this
+
+train:
+  # Dataset YAML of the prepared view. Machine-specific, so normally given as
+  # --data or FIREWATCH_DATA_YAML rather than here.
+  data: null
+  # Pretrained COCO weights: Ultralytics YOLO26n (AGPL-3.0). Never downloaded by
+  # the trainer; fetch weights_url on a machine with internet access and copy
+  # the file here (docs/cluster-setup.md#model-weights).
+  weights: ~/firewatch_weights/yolo26n.pt
+  weights_url: https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n.pt
+  imgsz: 640
+  epochs: 100
+  patience: 20          # early stopping on val fitness (mAP50-95)
+  batch: 32             # provisional for 1x A30 24 GB at 640 px; check GPU memory in the smoke test
+  seed: 42
+  deterministic: true   # best effort; see docs/training.md "Reproducibility"
+  device: "0"           # the one GPU SLURM allocates
+  workers: 8            # keep <= --cpus-per-task
+  fraction: 1.0         # fraction of the train split used
+  optimizer: auto       # Ultralytics picks SGD/AdamW and lr from the schedule length
+  amp: true
+  plots: true
+  # Parent directory for runs (outside the repo). null -> $FIREWATCH_RUNS_ROOT
+  # or ~/firewatch_runs. The run directory is <project>/<name>.
+  project: null
+  name: null            # null -> config file stem; the SLURM script sets <stem>-<jobid>

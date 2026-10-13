@@ -72,9 +72,10 @@ instead of forcing anything.
 Cheap checks only, with no training and no heavy data processing:
 
 ```bash
-~/envs/firewatch/bin/python -m pip install -e ".[dev]"   # only when dependencies change
+# only when dependencies change; the constraints file protects torch
+~/envs/firewatch/bin/python -m pip install -e ".[train,dev]" -c constraints/cluster-torch.txt
 ~/envs/firewatch/bin/python -m pytest -q
-bash -n slurm/train_gpu03.sh
+~/envs/firewatch/bin/python scripts/train.py --config configs/smoke_test.yaml     --data ~/datasets/dfire_view/data.yaml --dry-run    # checks only, no training
 ```
 
 ## 7. Submit jobs
@@ -83,18 +84,21 @@ Training **must** run on an allocated compute node through `sbatch` (or `srun`),
 never directly on the login node. The login node is shared and has no allocated GPU.
 
 ```bash
-mkdir -p slurm_logs
 export FIREWATCH_DATA_ROOT=$HOME/datasets/dfire
-sbatch slurm/train_gpu03.sh configs/baseline.yaml
+export FIREWATCH_VIEW_DIR=$HOME/datasets/dfire_view
+bash slurm/submit.sh train configs/smoke_test.yaml   # first
+bash slurm/submit.sh train configs/baseline.yaml
 ```
 
-(The training entry point is not implemented yet. See the README.)
+The procedure (smoke test, val vs test, resume) is described in
+[training.md](training.md).
 
 ## 8. Monitor
 
 ```bash
 squeue -u $USER
-tail -f slurm_logs/firewatch-train-<jobid>.out
+tail -f ~/firewatch_runs/slurm_logs/firewatch-train-<jobid>.out
+tail -f ~/firewatch_runs/<config>-<jobid>/results.csv   # per-epoch val metrics
 sacct -j <jobid> --format=JobID,State,Elapsed,MaxRSS,ExitCode
 scancel <jobid>            # if needed
 ```
@@ -105,7 +109,9 @@ scancel <jobid>            # if needed
 | --- | --- |
 | Datasets | `~/datasets/` |
 | Run outputs and checkpoints | `~/firewatch_runs/<job-name>-<jobid>/` |
-| SLURM stdout/stderr | `slurm_logs/` (in repo dir, gitignored) |
+| Dataset view | `~/datasets/dfire_view/` |
+| Pretrained weights | `~/firewatch_weights/` |
+| SLURM stdout/stderr | `~/firewatch_runs/slurm_logs/` (via `slurm/submit.sh`) |
 
 ## 10. Retrieve results
 

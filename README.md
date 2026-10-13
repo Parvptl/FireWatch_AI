@@ -14,87 +14,104 @@ a research and student project, not a certified safety system.
 
 | Component | Status |
 | --- | --- |
-| YOLO label parsing and coordinate conversion | Implemented, tested |
-| D-Fire dataset validation and statistics (`scripts/prepare_data.py`) | Implemented, tested on synthetic data |
-| Config loading (`configs/baseline.yaml`) | Implemented, tested |
-| SLURM job template (`slurm/train_gpu03.sh`) | Ready, but waits for a trainer and exits with an error until then |
-| Model / training (`scripts/train.py`) | **Not implemented**. The detection framework is not chosen yet |
-| Evaluation | **Not implemented** |
+| YOLO label parsing, coordinate conversion | Implemented, tested |
+| D-Fire validation and statistics (`scripts/prepare_data.py`) | Implemented, tested; run on the full local D-Fire copy |
+| Sanitised training view (`prepare_data.py --output-dir`) | Implemented, tested; built from the full local D-Fire copy |
+| Training (`scripts/train.py`, Ultralytics YOLO26n) | Implemented; options, preflight and provenance are tested. **Not yet run with Ultralytics/GPU** |
+| Evaluation (`scripts/evaluate.py`) | Implemented; CLI and metrics extraction tested with a stub. **Not yet run with Ultralytics/GPU** |
+| SLURM jobs (`slurm/`) | Implemented; scripts tested with bash outside SLURM. **No job submitted yet** |
 | Video / CCTV inference | **Not implemented** |
 
-No models have been trained yet, and there are no results or benchmark numbers.
+No model has been trained yet. There are no results, accuracy figures or
+benchmark numbers.
 
 ## Repository structure
 
 ```
-configs/          experiment configs (baseline.yaml)
-docs/             architecture, workflow, cluster setup, dataset guide
-scripts/          command-line entry points (prepare_data.py)
-slurm/            SLURM job scripts for the Bhavani cluster
-src/firewatch/    Python package (data/, utils/)
-tests/            pytest suite
+configs/          baseline.yaml, smoke_test.yaml (extends baseline)
+constraints/      pip constraints protecting the cluster's torch build
+docs/             training, dataset, cluster setup, workflow, architecture
+scripts/          prepare_data.py, train.py, evaluate.py
+slurm/            submit.sh, train_gpu03.sh, evaluate_gpu03.sh
+src/firewatch/    data/ (labels, validation, view), training/, evaluation/, utils/
+tests/            pytest suite (no downloads, no real training)
 ```
 
 These paths are local only and gitignored: `data/`, `outputs/`, `checkpoints/`,
-`slurm_logs/`, `DFireDataset/` (reference clone of the upstream metadata repo),
-and `.venv/`.
+`runs/`, `weights/`, `slurm_logs/`, `DFireDataset/` (upstream clone plus your local
+data) and `.venv/`.
 
 ## Environment
 
 Requires Python ≥ 3.10. The cluster uses 3.10.22 with torch 2.5.1+cu121. Torch is
-**not** a declared dependency, because the current code does not need it and the
-cluster already has a verified CUDA build.
+**not** a declared dependency and must not be reinstalled. Training needs the
+optional `train` extra (`ultralytics==8.4.176`, AGPL-3.0; see
+[Licensing](docs/training.md#licensing)).
 
-Local (Windows, Git Bash):
+Cluster (the login node has internet):
+
+```bash
+~/envs/firewatch/bin/python -m pip install -e ".[train,dev]" -c constraints/cluster-torch.txt
+```
+
+Local development and tests need no torch or Ultralytics:
 
 ```bash
 uv venv --python 3.10 .venv
 uv pip install --python .venv -e ".[dev]"
 ```
 
-Cluster:
-
-```bash
-~/envs/firewatch/bin/python -m pip install -e ".[dev]"
-```
-
-Offline installation is covered in [docs/cluster-setup.md](docs/cluster-setup.md).
+Offline installation, model weights and headless OpenCV are covered in
+[docs/cluster-setup.md](docs/cluster-setup.md).
 
 ## Dataset
 
 D-Fire images and YOLO labels (`0 = smoke`, `1 = fire`) are downloaded separately
-and kept outside the repo. See [docs/dataset-guide.md](docs/dataset-guide.md) for
-sources, layout and licence. Validate a download with:
+and kept outside the repo ([docs/dataset-guide.md](docs/dataset-guide.md)).
+Validate the download and build the sanitised training view:
 
 ```bash
 python scripts/prepare_data.py --config configs/baseline.yaml --data-root /path/to/dfire \
-    --report outputs/dfire_report.json --write-data-yaml outputs/dfire_data.yaml
+    --output-dir /path/to/dfire_view
 ```
+
+The source dataset is never modified.
 
 ## Training and evaluation
 
-Not available yet. `slurm/train_gpu03.sh` defines how training will be launched
-on the cluster once `scripts/train.py` exists:
+See [docs/training.md](docs/training.md). Pretrained weights must be downloaded
+beforehand, because the trainer never downloads anything. Run the smoke test first:
 
 ```bash
-mkdir -p slurm_logs
-export FIREWATCH_DATA_ROOT=$HOME/datasets/dfire
-sbatch slurm/train_gpu03.sh configs/baseline.yaml
+python scripts/train.py --config configs/smoke_test.yaml --data /path/to/dfire_view/data.yaml --dry-run
+bash slurm/submit.sh train configs/smoke_test.yaml        # on the cluster
+bash slurm/submit.sh train configs/baseline.yaml
+python scripts/evaluate.py --weights <run_dir>/weights/best.pt --data /path/to/dfire_view/data.yaml
 ```
+
+Model selection uses val. Test evaluation needs `--split test --final-test`, and
+every test evaluation is logged.
 
 ## Cluster workflow
 
 Develop locally, push to GitHub, run `git pull --ff-only` on the login node,
-submit with `sbatch`, and train on `gpu03` (1 × A30). See
+submit with `slurm/submit.sh`, and train on `gpu03` (1 × A30). See
 [docs/development-workflow.md](docs/development-workflow.md) and
 [docs/cluster-setup.md](docs/cluster-setup.md).
 
 ## Experiment artifacts
 
-Each SLURM run writes to `~/firewatch_runs/<job-name>-<jobid>/`. That includes
-checkpoints, logs, a config copy, the git commit, the seed and environment info.
-Nothing is written inside the repository except gitignored SLURM logs. Copy back
-only the metrics and checkpoints you need.
+Each run writes to `$FIREWATCH_RUNS_ROOT/<config>-<jobid>/` (default
+`~/firewatch_runs`). A run directory holds:
+
+- checkpoints, `results.csv` and plots (from Ultralytics);
+- `firewatch_run.json`: git commit and dirty flag, versions, GPU, seed, options
+  and weight hashes;
+- the merged config;
+- `eval/…/metrics.json`.
+
+SLURM logs go to `$FIREWATCH_RUNS_ROOT/slurm_logs/`. Nothing is written inside
+the repository.
 
 ## Tests
 
@@ -104,20 +121,24 @@ on Windows, `source .venv/bin/activate` on Linux):
 ```bash
 python -m pytest
 ruff check . && ruff format --check .
-bash -n slurm/train_gpu03.sh
+for f in slurm/*.sh; do bash -n "$f"; done
 ```
 
-The same checks run on GitHub Actions (`.github/workflows/ci.yml`).
+The tests never download weights, never import Ultralytics, and never train.
+Ultralytics is replaced by small stubs that check the calling contract. The same
+checks run on GitHub Actions (`.github/workflows/ci.yml`).
 
 ## Known limitations and next steps
 
-- Choose the detection framework and implement `scripts/train.py` and
-  `scripts/evaluate.py`, following the CLI contract in `slurm/train_gpu03.sh`.
-- Download D-Fire to the cluster, run `prepare_data.py` on it, and confirm the
-  split directory names in `configs/baseline.yaml`.
-- Confirm the `gpu03` partition limits (time and memory) and tune the `#SBATCH`
-  values.
-- Pre-download any pretrained weights, because compute nodes may be offline.
+- Run the smoke test on `gpu03`. It is the first real test of Ultralytics 8.4.176
+  with the cluster's torch, OpenCV and dependencies, and of GPU memory at
+  `batch: 32`.
+- Confirm the `gpu03` limits and tune the provisional `#SBATCH` values (time,
+  memory, CPUs, `--gres` syntax).
+- Choose a LICENSE for the repository that is compatible with AGPL-3.0 if it will
+  be published with Ultralytics.
+- Bit-exact reproducibility is not guaranteed (see
+  [Reproducibility](docs/training.md#reproducibility)).
 - Video/CCTV inference is not implemented yet.
 
 ## Acknowledgements

@@ -1,17 +1,24 @@
 #!/usr/bin/env python
-"""Validate a D-Fire (YOLO-format) dataset on disk and report statistics.
+"""Validate a D-Fire (YOLO-format) dataset and optionally build a training view.
 
 Checks every configured split for image/label pairing, malformed label lines,
-unknown class ids and non-normalised boxes. It does not modify the dataset and
+unknown class ids and non-normalised boxes. It never modifies the dataset and
 does not train anything.
 
+With --output-dir it also builds a sanitised *dataset view* for training (linked
+images, cleaned labels, an absolute-path data.yaml and a manifest of every
+change); see src/firewatch/data/yolo_view.py and docs/dataset-guide.md. The view
+is only built when validation reports no errors.
+
 Examples:
+    python scripts/prepare_data.py --config configs/baseline.yaml --data-root ~/datasets/dfire \
+        --output-dir ~/datasets/dfire_view
     python scripts/prepare_data.py --config configs/baseline.yaml --data-root ~/datasets/dfire
     python scripts/prepare_data.py --config configs/baseline.yaml \
         --report outputs/dfire_report.json --write-data-yaml outputs/dfire_data.yaml
 
 Exit codes: 0 = no errors, 1 = dataset errors found (or warnings with --strict),
-2 = configuration / missing-directory problem.
+2 = configuration / missing-directory problem, or the view could not be built.
 
 Errors: malformed or unreadable label files, class ids outside class_names, and
 splits with no images. Warnings: images without a label file, labels without an
@@ -29,6 +36,7 @@ from pathlib import Path
 import yaml
 
 from firewatch.data.dfire import DEFAULT_IMAGE_EXTENSIONS, scan_split, ultralytics_data_yaml
+from firewatch.data.yolo_view import LINK_MODES, ViewError, build_yolo_view
 from firewatch.utils.config import ConfigError, load_config, resolve_data_root
 
 
@@ -44,6 +52,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--strict", action="store_true", help="also fail on warnings (unpaired files, bad boxes)"
+    )
+    view = parser.add_argument_group("dataset view (training input)")
+    view.add_argument("--output-dir", type=Path, help="build a sanitised training view here")
+    view.add_argument(
+        "--link-mode", choices=LINK_MODES, help="how view images refer to the source (config)"
+    )
+    view.add_argument(
+        "--min-box-size",
+        type=float,
+        help="drop boxes whose clipped width/height is <= this (normalised; config, default 0)",
+    )
+    view.add_argument(
+        "--overwrite", action="store_true", help="rebuild an existing view at --output-dir"
     )
     return parser.parse_args(argv)
 
@@ -134,7 +155,56 @@ def main(argv: list[str] | None = None) -> int:
         args.write_data_yaml.write_text(yaml.safe_dump(data_yaml, sort_keys=False), "utf-8")
         print(f"data yaml written to {args.write_data_yaml}")
 
+    if args.output_dir:
+        if exit_code != 0:
+            print("error: view not built; fix the validation errors first", file=sys.stderr)
+            return exit_code
+        view_rc = build_view(args, cfg, root, found_splits, class_names)
+        if view_rc:
+            return view_rc
+
     return exit_code
+
+
+def build_view(args, cfg, root, found_splits, class_names) -> int:
+    ds = cfg["dataset"]
+    prep = cfg.get("prepare") or {}
+    if not isinstance(prep, dict):
+        print("error: 'prepare' section of the config must be a mapping", file=sys.stderr)
+        return 2
+    missing = [s for s in ("train", "val") if s not in found_splits]
+    if missing:
+        print(f"error: a view needs train and val splits; missing {missing}", file=sys.stderr)
+        return 2
+    min_box_size = args.min_box_size
+    if min_box_size is None:
+        min_box_size = prep.get("min_box_size", 0.0)
+    try:
+        manifest = build_yolo_view(
+            root,
+            args.output_dir.expanduser(),
+            found_splits,
+            class_names,
+            image_dir_name=ds.get("image_dir", "images"),
+            label_dir_name=ds.get("label_dir", "labels"),
+            image_extensions=tuple(ds.get("image_extensions", DEFAULT_IMAGE_EXTENSIONS)),
+            link_mode=args.link_mode or prep.get("link_mode", "symlink"),
+            min_box_size=float(min_box_size),
+            overwrite=args.overwrite,
+        )
+    except (ViewError, OSError, TypeError, ValueError) as exc:
+        print(f"error: could not build dataset view: {exc}", file=sys.stderr)
+        return 2
+    for split, rep in manifest["splits"].items():
+        excluded = {k: len(v) for k, v in rep["excluded"].items()}
+        print(
+            f"[view {split}] images={rep['images_out']}/{rep['images_in']} "
+            f"background={rep['background']} boxes={rep['boxes_out']} "
+            f"clipped={rep['num_clipped']} dropped_degenerate={rep['num_dropped_degenerate']} "
+            f"excluded={excluded}"
+        )
+    print(f"view written to {manifest['view_root']} (data.yaml, firewatch_view.json)")
+    return 0
 
 
 if __name__ == "__main__":
