@@ -111,15 +111,21 @@ see [cluster-setup.md](cluster-setup.md#model-weights).
 
 - **Smoke test first**: `configs/smoke_test.yaml` extends the baseline. It runs
   2 epochs on the full train split and validates on the full val split (about
-  45 s per epoch on an A30). It checks the environment, GPU memory at
+  70 s per epoch at 960 px on an L40). It checks the environment, GPU memory at
   `batch: 32`, checkpointing and evaluation. Its metrics are not results.
 - **`fraction` is not a random sample.** Ultralytics 8.4 keeps the first N
   images in sorted file order. On D-Fire, `fraction: 0.1` selected 1,407
   background images out of 1,412, so avoid `--fraction` for anything that
   should measure learning.
-- **Baseline**: `configs/baseline.yaml`. Settings: 640 px, up to 100 epochs,
-  early stopping after 20 epochs without val improvement, batch 32 (provisional
-  for an A30), seed 42, `optimizer: auto`, AMP on.
+- **Baseline**: `configs/baseline.yaml`. Settings: 960 px, up to 100 epochs,
+  early stopping after 20 epochs without val improvement, batch 32, seed 42,
+  `optimizer: auto`, AMP on.
+- **Why 960 px**: fire boxes are small (median 0.53 % of the image; 32 % under
+  32×32 px at 640). On one L40, with all else equal, 960 beat 640 on val for
+  seeds 42 and 43: fire mAP50-95 +0.011 / +0.013, overall +0.0073 / +0.0063,
+  smoke unchanged. Seed-to-seed spread at a fixed size was 0.003–0.004 overall.
+  Cost: 0.6 vs 0.3 ms inference per image and 16.7 vs 7.1 GB peak training
+  memory (L40). Batch 32 at 960 px has not been run on the 24 GB A30.
 - **Model selection uses val only.** Ultralytics keeps `best.pt` = the epoch with
   the highest val fitness, which is mAP50-95 in 8.4.176. Training never passes a
   test split.

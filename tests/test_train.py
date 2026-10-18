@@ -49,7 +49,7 @@ def test_dry_run_prints_plan_and_writes_nothing(base_args, runs_root, capsys):
     plan = json.loads(out)
     kwargs = plan["ultralytics_train_kwargs"]
     assert kwargs["project"] == str(runs_root) and kwargs["name"] == "exp1"
-    assert kwargs["seed"] == 42 and kwargs["imgsz"] == 640 and kwargs["batch"] == 32
+    assert kwargs["seed"] == 42 and kwargs["imgsz"] == 960 and kwargs["batch"] == 32
     assert kwargs["exist_ok"] is True and kwargs["deterministic"] is True
     assert "split" not in kwargs  # training validates on the data YAML's val split only
     assert not runs_root.exists()
