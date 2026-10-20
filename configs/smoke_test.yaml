@@ -1,10 +1,13 @@
 # Short end-to-end check of the training pipeline on the cluster before the
-# full baseline: 2 epochs on 10% of the train split, full val split.
+# full baseline: 2 epochs on the full train split, full val split.
 # It verifies the environment, data, GPU memory at this batch size, checkpoint
 # writing and evaluation. Its metrics are NOT a result.
+#
+# No `fraction` here: Ultralytics 8.4 keeps the FIRST N images in sorted file
+# order, not a random sample. On D-Fire, fraction 0.1 selected AoF00000-AoF01704,
+# of which 1407/1412 are background images, so the model could not learn.
 extends: baseline.yaml
 
 train:
   epochs: 2
-  fraction: 0.1
   patience: 0         # disable early stopping for the 2-epoch run

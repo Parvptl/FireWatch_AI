@@ -1,0 +1,53 @@
+# FireWatch application configuration (scripts/serve.py, scripts/analyze_video.py).
+#
+# Every key is optional; omitted keys use the defaults in src/firewatch/app/config.py.
+# Environment overrides: FIREWATCH_MODEL_PATH (model.weights), FIREWATCH_APP_HOME (base of the
+# input/data directories), FIREWATCH_API_TOKEN (api.token), FIREWATCH_APP_CONFIG (this file).
+
+model:
+  # YOLO26n trained at 960 px on D-Fire (seed 42 baseline run).
+  weights: ~/firewatch_runs/baseline_imgsz960/weights/best.pt
+  imgsz: 960
+  device: cpu            # "0" to use the first GPU
+  cpu_threads: 4         # torch threads on CPU
+  class_names: [smoke, fire]
+  conf_threshold: 0.25   # detections below this are not reported
+  iou_threshold: 0.7
+  max_det: 100
+
+video:
+  input_dir: ~/firewatch_app/input   # only videos under this directory can be analysed or uploaded
+  allowed_extensions: [.mp4, .avi, .mkv, .mov, .m4v]
+  sample_fps: 2.0        # analysed frames per second of video (0 = every frame)
+  max_upload_mb: 500
+  max_duration_s: 10800
+  write_annotated_video: true
+
+events:
+  min_confidence: 0.35   # detections below this do not count towards events
+  activate_hits: 3       # frames with a detection needed to confirm an event...
+  activate_window_s: 4.0 # ...within this many seconds
+  resolve_gap_s: 10.0    # an event ends after this long without a detection
+  alert_cooldown_s: 30.0 # no repeated alert for the same class within this time
+
+stream:
+  enabled: true          # RTSP/HTTP streams via OpenCV/FFmpeg (not validated on a real camera yet)
+  allowed_schemes: [rtsp, rtsps, http, https]
+  max_concurrent: 1
+  reconnect_attempts: 5
+  reconnect_delay_s: 2.0
+  default_max_duration_s: 0   # 0 = until cancelled
+  sample_fps: 2.0
+
+storage:
+  data_dir: ~/firewatch_app/data     # SQLite database and per-job outputs
+
+jobs:
+  max_queued: 8
+  shutdown_timeout_s: 30
+  progress_interval_s: 1.0
+
+api:
+  host: 127.0.0.1        # a non-loopback host requires api.token / FIREWATCH_API_TOKEN
+  port: 8000
+  token: null

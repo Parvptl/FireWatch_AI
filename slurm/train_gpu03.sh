@@ -11,7 +11,7 @@
 #   mkdir -p slurm_logs && sbatch slurm/train_gpu03.sh configs/baseline.yaml
 #
 # Environment (exported to the job by sbatch --export=ALL, the default):
-#   FIREWATCH_VIEW_DIR   prepared dataset view   (default: $HOME/datasets/dfire_view)
+#   FIREWATCH_VIEW_DIR   prepared dataset view   (default: $HOME/datasets/dfire_view_v2)
 #   FIREWATCH_DATA_ROOT  raw D-Fire dataset, only needed if the view does not
 #                        exist yet and must be built by this job
 #   FIREWATCH_RUNS_ROOT  parent of run dirs      (default: $HOME/firewatch_runs)
@@ -46,7 +46,7 @@ CONFIG="${1:-configs/baseline.yaml}"
 if [[ $# -gt 0 ]]; then shift; fi
 PYTHON="${FIREWATCH_PYTHON:-$HOME/envs/firewatch/bin/python}"
 RUNS_ROOT="${FIREWATCH_RUNS_ROOT:-$HOME/firewatch_runs}"
-VIEW_DIR="${FIREWATCH_VIEW_DIR:-$HOME/datasets/dfire_view}"
+VIEW_DIR="${FIREWATCH_VIEW_DIR:-$HOME/datasets/dfire_view_v2}"
 
 # --- Working directory: the repository root the job was submitted from --------
 cd "${SLURM_SUBMIT_DIR:-$PWD}"

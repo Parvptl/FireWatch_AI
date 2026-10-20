@@ -149,6 +149,7 @@ def run_training(opts: TrainOptions, config: dict) -> dict:
         best_checkpoint=str(best) if best.is_file() else None,
         best_checkpoint_sha256=sha256_file(best) if best.is_file() else None,
         last_checkpoint=str(last) if last.is_file() else None,
+        last_checkpoint_sha256=sha256_file(last) if last.is_file() else None,
         final_val_metrics=to_jsonable(getattr(trainer, "metrics", None)),
         model_selection="best.pt = epoch with the highest val fitness (mAP50-95 in 8.4)",
     )

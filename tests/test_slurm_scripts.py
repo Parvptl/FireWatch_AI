@@ -34,7 +34,7 @@ def run_script(script: str, args: list[str], env_extra: dict, tmp_path: Path):
         "SLURM_JOB_ID": "12345",
         **env_extra,
     }
-    for var in ("FIREWATCH_DATA_ROOT", "FIREWATCH_RESUME"):
+    for var in ("FIREWATCH_DATA_ROOT", "FIREWATCH_RESUME", "FIREWATCH_VIEW_DIR"):
         if var not in env_extra:
             env.pop(var, None)
     return subprocess.run(
@@ -56,6 +56,15 @@ def test_train_job_requires_data_when_view_missing(tmp_path):
     )
     assert r.returncode == 2
     assert "FIREWATCH_DATA_ROOT is not set" in r.stderr
+
+
+def test_train_job_default_view_dir(tmp_path):
+    # Without FIREWATCH_VIEW_DIR the job must use the verified view, not the stale dfire_view.
+    r = run_script(
+        "slurm/train_gpu03.sh", ["configs/smoke_test.yaml"], {"HOME": posix(tmp_path)}, tmp_path
+    )
+    assert r.returncode == 2
+    assert f"no dataset view at {posix(tmp_path)}/datasets/dfire_view_v2 and" in r.stderr
 
 
 def test_train_job_builds_view_then_dry_runs(tmp_path, make_dataset, fake_weights):

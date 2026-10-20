@@ -11,9 +11,9 @@ set leaves a record. Use test only once a model has been chosen on val.
 
 Examples:
     python scripts/evaluate.py --weights ~/firewatch_runs/baseline-001/weights/best.pt \
-        --data ~/datasets/dfire_view/data.yaml
+        --data ~/datasets/dfire_view_v2/data.yaml
     python scripts/evaluate.py --weights ~/firewatch_runs/baseline-001/weights/best.pt \
-        --data ~/datasets/dfire_view/data.yaml --split test --final-test
+        --data ~/datasets/dfire_view_v2/data.yaml --split test --final-test
 
 Exit codes: 0 = success, 2 = invalid options or missing prerequisites, 1 = evaluation failed.
 """

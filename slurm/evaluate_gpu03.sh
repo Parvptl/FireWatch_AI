@@ -3,7 +3,7 @@
 # FireWatch-AI evaluation job (partition gpu03, 1 GPU). Runs scripts/evaluate.py.
 #
 #   slurm/submit.sh evaluate --weights ~/firewatch_runs/<run>/weights/best.pt \
-#       --data ~/datasets/dfire_view/data.yaml                  # val split
+#       --data ~/datasets/dfire_view_v2/data.yaml               # val split
 #   slurm/submit.sh evaluate --weights ... --data ... --split test --final-test
 #
 # All arguments are passed to scripts/evaluate.py. Resource values are

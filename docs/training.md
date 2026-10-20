@@ -42,7 +42,11 @@ Two behaviours of Ultralytics 8.4.176 were verified in its source:
 | Empty label file | Keep as background |
 | Missing label file / duplicate image stem | Exclude the image |
 | Malformed line / unknown class id | Abort |
-| Unchanged box | Copy the original text verbatim |
+| Unchanged box | Copy the box text verbatim (no float reformatting) |
+
+Every label file in the view is written with LF line endings, so CRLF source
+files differ byte-wise from their view copies even when no box changed. This is
+not recorded as a change in `firewatch_view.json`.
 
 Every change (file, line, before, after) and every exclusion is listed in
 `firewatch_view.json`. Images are per-file links to the source by default
@@ -54,6 +58,16 @@ Every change (file, line, before, after) and every exclusion is listed in
 
 A *directory* symlink would not work: Ultralytics resolves the split directory
 path back to the raw labels.
+
+**JPEG repair inside the view.** When Ultralytics first scans a split, it
+re-encodes any JPEG whose file does not end with the `FF D9` end marker (log:
+`corrupt JPEG restored and saved`). It writes a temporary file and
+`os.replace`s the *view entry*, so the link becomes a regular file and the raw
+image is not touched. In D-Fire, 21 train, 5 val and 11 test JPEGs carry an
+18-byte `MediaType=default` trailer and are replaced this way on first use;
+`firewatch_view.json` does not record it. Later runs replay the message from
+`labels.cache` without rewriting the file. The raw dataset can be checked
+against a SHA-256 manifest under `~/firewatch_runs/integrity/`.
 
 Result on the local D-Fire copy (2026-10-13, hard links, about 40 s): all 21,527
 images kept, 0 excluded. Boxes changed:
@@ -72,7 +86,7 @@ up to 0.094. These are real overshoots, not floating-point noise.
 
 ```bash
 python scripts/prepare_data.py --config configs/baseline.yaml \
-    --data-root ~/datasets/dfire --output-dir ~/datasets/dfire_view
+    --data-root ~/datasets/dfire --output-dir ~/datasets/dfire_view_v2
 ```
 
 `data.yaml` contains absolute paths, so build the view **on the machine that
@@ -96,12 +110,22 @@ see [cluster-setup.md](cluster-setup.md#model-weights).
 ## 3. Experimental design
 
 - **Smoke test first**: `configs/smoke_test.yaml` extends the baseline. It runs
-  2 epochs on 10 % of train and validates on the full val split. It checks the
-  environment, GPU memory at `batch: 32`, checkpointing and evaluation. Its
-  metrics are not results.
-- **Baseline**: `configs/baseline.yaml`. Settings: 640 px, up to 100 epochs,
-  early stopping after 20 epochs without val improvement, batch 32 (provisional
-  for an A30), seed 42, `optimizer: auto`, AMP on.
+  2 epochs on the full train split and validates on the full val split (about
+  70 s per epoch at 960 px on an L40). It checks the environment, GPU memory at
+  `batch: 32`, checkpointing and evaluation. Its metrics are not results.
+- **`fraction` is not a random sample.** Ultralytics 8.4 keeps the first N
+  images in sorted file order. On D-Fire, `fraction: 0.1` selected 1,407
+  background images out of 1,412, so avoid `--fraction` for anything that
+  should measure learning.
+- **Baseline**: `configs/baseline.yaml`. Settings: 960 px, up to 100 epochs,
+  early stopping after 20 epochs without val improvement, batch 32, seed 42,
+  `optimizer: auto`, AMP on.
+- **Why 960 px**: fire boxes are small (median 0.53 % of the image; 32 % under
+  32×32 px at 640). On one L40, with all else equal, 960 beat 640 on val for
+  seeds 42 and 43: fire mAP50-95 +0.011 / +0.013, overall +0.0073 / +0.0063,
+  smoke unchanged. Seed-to-seed spread at a fixed size was 0.003–0.004 overall.
+  Cost: 0.6 vs 0.3 ms inference per image and 16.7 vs 7.1 GB peak training
+  memory (L40). Batch 32 at 960 px has not been run on the 24 GB A30.
 - **Model selection uses val only.** Ultralytics keeps `best.pt` = the epoch with
   the highest val fitness, which is mAP50-95 in 8.4.176. Training never passes a
   test split.
@@ -119,7 +143,7 @@ Locally or on the login node, validate without training (Ultralytics is not
 imported):
 
 ```bash
-python scripts/train.py --config configs/smoke_test.yaml --data ~/datasets/dfire_view/data.yaml --dry-run
+python scripts/train.py --config configs/smoke_test.yaml --data ~/datasets/dfire_view_v2/data.yaml --dry-run
 ```
 
 On the cluster, always go through SLURM:
@@ -154,7 +178,7 @@ FIREWATCH_RESUME=$HOME/firewatch_runs/baseline-12345/weights/last.pt \
 
 | File | Written by | Content |
 | --- | --- | --- |
-| `firewatch_run.json` | FireWatch | status, options, exact Ultralytics kwargs, git commit/branch/dirty, package versions, CUDA/GPU, SLURM job, weights SHA-256, seed, final val metrics, best checkpoint + SHA-256 |
+| `firewatch_run.json` | FireWatch | status, options, exact Ultralytics kwargs, git commit/branch/dirty, package versions, CUDA/GPU, SLURM job, weights SHA-256, seed, final val metrics, best and last checkpoints + SHA-256 |
 | `firewatch_config.yaml` | FireWatch | fully merged config (after `extends`) |
 | `uncommitted_<ts>.diff` | FireWatch | only if the working tree was dirty |
 | `args.yaml`, `results.csv`, plots | Ultralytics | training arguments and per-epoch metrics |
@@ -165,9 +189,9 @@ FIREWATCH_RESUME=$HOME/firewatch_runs/baseline-12345/weights/last.pt \
 
 ```bash
 python scripts/evaluate.py --weights ~/firewatch_runs/<run>/weights/best.pt \
-    --data ~/datasets/dfire_view/data.yaml                      # val
+    --data ~/datasets/dfire_view_v2/data.yaml                   # val
 python scripts/evaluate.py --weights ~/firewatch_runs/<run>/weights/best.pt \
-    --data ~/datasets/dfire_view/data.yaml --split test --final-test
+    --data ~/datasets/dfire_view_v2/data.yaml --split test --final-test
 ```
 
 Defaults: `conf=0.001` (standard for mAP), `iou=0.7` (Ultralytics default), and

@@ -9,10 +9,10 @@ only; the test split is never touched here (see scripts/evaluate.py).
 Examples:
     # check everything without importing Ultralytics or training
     python scripts/train.py --config configs/smoke_test.yaml \
-        --data ~/datasets/dfire_view/data.yaml --dry-run
+        --data ~/datasets/dfire_view_v2/data.yaml --dry-run
 
     python scripts/train.py --config configs/baseline.yaml \
-        --data ~/datasets/dfire_view/data.yaml --name baseline-001
+        --data ~/datasets/dfire_view_v2/data.yaml --name baseline-001
 
     # continue an interrupted run (settings come from the checkpoint)
     python scripts/train.py --config configs/baseline.yaml \

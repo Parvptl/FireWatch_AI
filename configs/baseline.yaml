@@ -35,10 +35,10 @@ train:
   # the file here (docs/cluster-setup.md#model-weights).
   weights: ~/firewatch_weights/yolo26n.pt
   weights_url: https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n.pt
-  imgsz: 640
+  imgsz: 960            # validated on an L40; see docs/training.md for the two-seed comparison
   epochs: 100
   patience: 20          # early stopping on val fitness (mAP50-95)
-  batch: 32             # provisional for 1x A30 24 GB at 640 px; check GPU memory in the smoke test
+  batch: 32             # peak 16.7 GB at 960 px on an L40; not yet run at 960 on the 24 GB A30
   seed: 42
   deterministic: true   # best effort; see docs/training.md "Reproducibility"
   device: "0"           # the one GPU SLURM allocates

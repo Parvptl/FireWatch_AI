@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import sys
@@ -48,7 +49,7 @@ def test_dry_run_prints_plan_and_writes_nothing(base_args, runs_root, capsys):
     plan = json.loads(out)
     kwargs = plan["ultralytics_train_kwargs"]
     assert kwargs["project"] == str(runs_root) and kwargs["name"] == "exp1"
-    assert kwargs["seed"] == 42 and kwargs["imgsz"] == 640 and kwargs["batch"] == 32
+    assert kwargs["seed"] == 42 and kwargs["imgsz"] == 960 and kwargs["batch"] == 32
     assert kwargs["exist_ok"] is True and kwargs["deterministic"] is True
     assert "split" not in kwargs  # training validates on the data YAML's val split only
     assert not runs_root.exists()
@@ -96,7 +97,7 @@ def test_smoke_test_config_extends_baseline(make_view, fake_weights, runs_root, 
     assert rc == 0
     plan = json.loads(out)
     kw = plan["ultralytics_train_kwargs"]
-    assert (kw["epochs"], kw["fraction"], kw["patience"]) == (2, 0.1, 0)
+    assert (kw["epochs"], kw["fraction"], kw["patience"]) == (2, 1.0, 0)
     assert kw["batch"] == 32 and kw["seed"] == 42  # inherited
     assert kw["name"] == "smoke_test"  # default name = config stem
 
@@ -445,6 +446,8 @@ def fake_yolo(monkeypatch):
     FakeYOLO.calls = []
     FakeYOLO.fail_with = None
     monkeypatch.setattr(runner, "load_yolo_class", lambda: FakeYOLO)
+    # The real one imports ultralytics.utils, which works once the package is installed.
+    monkeypatch.setattr(runner, "amp_check_status", lambda: {"weights": None, "present": False})
     return FakeYOLO
 
 
@@ -462,6 +465,9 @@ def test_training_run_records_provenance(base_args, runs_root, fake_yolo, fake_w
     assert record["options"]["seed"] == 42
     assert len(record["start_weights_sha256"]) == 64
     assert record["best_checkpoint"] == str(run_dir / "weights" / "best.pt")
+    assert record["best_checkpoint_sha256"] == hashlib.sha256(b"best").hexdigest()
+    assert record["last_checkpoint"] == str(run_dir / "weights" / "last.pt")
+    assert record["last_checkpoint_sha256"] == hashlib.sha256(b"last").hexdigest()
     assert record["final_val_metrics"]["fitness"] is None  # NaN serialised as null
     assert "commit" in record["git"] and "diff" not in record["git"]
     assert record["environment"]["python"]
