@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FireWatch</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>FireWatch <span class="sub">fire &amp; smoke video analysis</span></h1>
+  <div id="health" class="health">checking service…</div>
+</header>
+<div id="banner" class="banner hidden"></div>
+<p class="note">Research prototype. Detections come from a model trained on D-Fire; software tests do not
+  establish detection performance on your cameras. Do not rely on it as a safety system.</p>
+
+<section class="card" id="auth-card" hidden>
+  <h2>API token</h2>
+  <input id="token" type="password" placeholder="API token" autocomplete="off">
+  <button id="save-token">Save</button>
+</section>
+
+<section class="card">
+  <h2>Analyse a recorded video</h2>
+  <div class="row">
+    <label>Video in input directory
+      <select id="video-select"><option value="">loading…</option></select>
+    </label>
+    <button id="refresh-videos" class="secondary">Refresh list</button>
+    <button id="submit-video">Analyse</button>
+  </div>
+  <div class="row">
+    <label>Or upload an authorised video
+      <input id="upload-file" type="file" accept=".mp4,.avi,.mkv,.mov,.m4v">
+    </label>
+    <button id="upload-btn">Upload &amp; analyse</button>
+    <span id="upload-status" class="muted"></span>
+  </div>
+  <p class="muted" id="input-dir"></p>
+</section>
+
+<section class="card" id="stream-card" hidden>
+  <h2>Analyse a live stream (RTSP/HTTP)</h2>
+  <div class="row">
+    <input id="stream-url" type="text" placeholder="rtsp://user:pass@camera/stream" size="48">
+    <input id="stream-name" type="text" placeholder="name (optional)">
+    <label>max seconds (0 = until stopped) <input id="stream-max" type="number" min="0" value="0"></label>
+    <button id="stream-btn">Start</button>
+  </div>
+  <p class="muted">Credentials in the URL are not stored or shown; the job is labelled with host and path.</p>
+</section>
+
+<section class="card">
+  <h2>Jobs</h2>
+  <table id="jobs"><thead><tr>
+    <th>Created</th><th>Input</th><th>Status</th><th>Progress</th><th>Events</th><th>Alerts</th><th></th>
+  </tr></thead><tbody></tbody></table>
+</section>
+
+<section class="card hidden" id="detail">
+  <h2>Job <span id="d-id"></span> <button id="d-close" class="secondary">close</button></h2>
+  <div id="d-error" class="error hidden"></div>
+  <div id="d-warning" class="warning hidden"></div>
+  <div class="grid">
+    <div><h3>Input</h3><dl id="d-meta"></dl></div>
+    <div><h3>Detection summary</h3><table id="d-classes"><thead><tr>
+      <th>Class</th><th>Frames with detections</th><th>Boxes</th><th>Max confidence</th></tr></thead><tbody></tbody></table>
+      <dl id="d-summary"></dl>
+    </div>
+  </div>
+  <h3>Events</h3>
+  <table id="d-events"><thead><tr>
+    <th>Class</th><th>Status</th><th>Start</th><th>Alert</th><th>End</th><th>Duration</th>
+    <th>Frames</th><th>Peak conf</th><th>Alert frame</th><th>Peak frame</th></tr></thead><tbody></tbody></table>
+  <p id="d-noevents" class="muted hidden">No events were confirmed.</p>
+  <h3>Detections (first frames with boxes)</h3>
+  <table id="d-dets"><thead><tr><th>Frame</th><th>Time</th><th>Detections</th></tr></thead><tbody></tbody></table>
+  <p id="d-detcount" class="muted"></p>
+  <p id="d-video"></p>
+</section>
+
+<section class="card">
+  <h2>Alert history</h2>
+  <table id="alerts"><thead><tr>
+    <th>Raised</th><th>Input</th><th>Class</th><th>Video time</th><th>Confidence</th><th>Frame</th></tr></thead><tbody></tbody></table>
+  <p id="no-alerts" class="muted hidden">No alerts yet.</p>
+</section>
+<script src="/static/app.js"></script>
+</body>
+</html>

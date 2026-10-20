@@ -17,23 +17,26 @@ a research and student project, not a certified safety system.
 | YOLO label parsing, coordinate conversion | Implemented, tested |
 | D-Fire validation and statistics (`scripts/prepare_data.py`) | Implemented, tested; run on the full local D-Fire copy |
 | Sanitised training view (`prepare_data.py --output-dir`) | Implemented, tested; built from the full local D-Fire copy |
-| Training (`scripts/train.py`, Ultralytics YOLO26n) | Implemented; options, preflight and provenance are tested. **Not yet run with Ultralytics/GPU** |
-| Evaluation (`scripts/evaluate.py`) | Implemented; CLI and metrics extraction tested with a stub. **Not yet run with Ultralytics/GPU** |
-| SLURM jobs (`slurm/`) | Implemented; scripts tested with bash outside SLURM. **No job submitted yet** |
-| Video / CCTV inference | **Not implemented** |
+| Training (`scripts/train.py`, Ultralytics YOLO26n) | Implemented and run on the cluster (YOLO26n, 960 px baseline) |
+| Evaluation (`scripts/evaluate.py`) | Implemented and run on the cluster |
+| SLURM jobs (`slurm/`) | Implemented and used |
+| Video analysis application (`scripts/serve.py`, `scripts/analyze_video.py`) | Implemented, tested; end-to-end smoke test with the real checkpoint on CPU |
+| Live streams (RTSP/HTTP) | Implemented via OpenCV/FFmpeg; tested with an HTTP-served video, **not yet with a real RTSP camera** |
 
-No model has been trained yet. There are no results, accuracy figures or
-benchmark numbers.
+D-Fire is a development resource, not an independent benchmark: its splits share
+incidents, videos and cameras, so D-Fire scores do not predict performance on new
+CCTV cameras or sites. Software tests check the application, not detection quality.
 
 ## Repository structure
 
 ```
-configs/          baseline.yaml, smoke_test.yaml (extends baseline)
+configs/          baseline.yaml, smoke_test.yaml (extends baseline), app.yaml (application)
 constraints/      pip constraints protecting the cluster's torch build
 docs/             training, dataset, cluster setup, workflow, architecture
-scripts/          prepare_data.py, train.py, evaluate.py
+scripts/          prepare_data.py, train.py, evaluate.py, serve.py, analyze_video.py
 slurm/            submit.sh, train_gpu03.sh, evaluate_gpu03.sh
-src/firewatch/    data/ (labels, validation, view), training/, evaluation/, utils/
+src/firewatch/    data/ (labels, validation, view), training/, evaluation/, utils/,
+                  app/ (inference, events, jobs, storage, HTTP API, dashboard)
 tests/            pytest suite (no downloads, no real training)
 ```
 
@@ -63,6 +66,54 @@ uv pip install --python .venv -e ".[dev]"
 
 Offline installation, model weights and headless OpenCV are covered in
 [docs/cluster-setup.md](docs/cluster-setup.md).
+
+## Running the application
+
+The application analyses recorded videos (and optionally live streams) with the trained
+checkpoint, groups per-frame detections into fire/smoke events, raises one alert per
+confirmed event, and serves the results through a JSON API and a browser dashboard.
+It uses only the Python standard library plus OpenCV/Ultralytics already in the
+cluster environment (no web framework). All settings are in `configs/app.yaml`.
+
+```bash
+# 1. Put authorised videos in the input directory (default ~/firewatch_app/input)
+mkdir -p ~/firewatch_app/input && cp /path/to/video.mp4 ~/firewatch_app/input/
+
+# 2. Start the API and dashboard (Ctrl-C or SIGTERM stops it cleanly)
+~/envs/firewatch/bin/python scripts/serve.py --config configs/app.yaml
+
+# 3. Open http://127.0.0.1:8000/  (from a laptop: ssh -L 8000:127.0.0.1:8000 <cluster>)
+```
+
+Use `--device 0` on a GPU node, `--port` to change the port and `--weights` (or
+`FIREWATCH_MODEL_PATH`) to use another checkpoint. A non-loopback `--host` requires
+`FIREWATCH_API_TOKEN`. One server per data directory.
+
+Command-line analysis of one video (stored in the same database, so it also appears in
+the dashboard):
+
+```bash
+~/envs/firewatch/bin/python scripts/analyze_video.py --config configs/app.yaml --video video.mp4
+```
+
+API examples:
+
+```bash
+curl -s localhost:8000/api/health
+curl -s -X POST -H 'Content-Type: application/json' -d '{"video":"video.mp4"}' localhost:8000/api/jobs
+curl -s localhost:8000/api/jobs/<job_id>             # status, progress, summary, error
+curl -s localhost:8000/api/jobs/<job_id>/events      # events with start/alert/end times
+curl -s localhost:8000/api/jobs/<job_id>/detections  # per-frame boxes, classes, confidences
+curl -s localhost:8000/api/alerts                    # alert history
+curl -s -X POST --data-binary @video.mp4 'localhost:8000/api/uploads?filename=video.mp4&submit=1'
+curl -s -X POST -H 'Content-Type: application/json' -d '{"url":"rtsp://camera/stream"}' localhost:8000/api/streams
+```
+
+Event logic (`events:` in the config): a class becomes an event after `activate_hits`
+analysed frames with a detection of at least `min_confidence` within
+`activate_window_s`; the alert is raised once at that moment; the event ends after
+`resolve_gap_s` without detections. Jobs, events and alerts are stored in SQLite under
+`storage.data_dir`, with key frames, `detections.jsonl` and an annotated MP4 per job.
 
 ## Dataset
 
@@ -139,7 +190,10 @@ checks run on GitHub Actions (`.github/workflows/ci.yml`).
   be published with Ultralytics.
 - Bit-exact reproducibility is not guaranteed (see
   [Reproducibility](docs/training.md#reproducibility)).
-- Video/CCTV inference is not implemented yet.
+- The video application has not been validated on a real RTSP camera, and its
+  detection quality on unseen CCTV cameras is unknown; an independent, rights-cleared
+  CCTV evaluation is needed before any operational use.
+- The commercial-use rights of individual D-Fire images are unresolved.
 
 ## Acknowledgements
 
